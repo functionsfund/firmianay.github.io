@@ -1,7 +1,7 @@
 ---
 layout: post
 title: wordpress换主题后错误500的解决方法
-category: old-blog
+category: old_blog
 tags: wordpress
 keywords: wordpress
 description:
