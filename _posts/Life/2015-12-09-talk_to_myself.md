@@ -1,7 +1,7 @@
 ---
 layout: post
 title: 与过去、现在和将来的自己谈谈
-category: life
+category: Life
 tags: life
 keywords:
 description:
