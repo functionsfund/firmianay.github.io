@@ -1,0 +1,49 @@
+# Site settings
+title: Firmy's blog
+email: firmianay@gmail.com
+description: > # this means to ignore newlines until "baseurl:"
+  Firmy's blog
+baseurl: "" # the subpath of your site, e.g. /blog/
+url: "" # the base hostname & protocol for your site
+rss_url: /pages/feed.xml
+author: Firmy
+
+# Sidebar filter
+# Choose 'tag' or 'category' as filter in sidebar.
+filter: 'category'
+recent_num: 20
+
+# Social account
+twitter: firmianay1
+# weibo: Firmy
+github: firmianay
+# instagram: 
+# linkedin: 
+
+# avatar and Favicon
+avatar: /assets/img/avatar.jpg
+favicon: /assets/img/avatar.jpg
+
+# disqus config
+# disqus:
+#   shortname: suyan-zh
+
+# google analytics config
+# ga:
+#   id: UA-54767140-1
+#   url: yansu.org
+
+# Build settings
+permalink: /:year/:month/:day/:title.html
+markdown: kramdown
+highlighter: rouge
+mathjax: able
+sass:
+  style: compressed
+
+# Jekyll Plugin
+# https://help.github.com/articles/adding-jekyll-plugins-to-a-github-pages-site/
+gems:
+  - jekyll-sitemap
+  - jekyll-seo-tag
+  - jekyll-feed
