@@ -9,6 +9,7 @@ description:
 
 - [LaTex in Github](#latex-in-github)
 - [Page Jumping in Github](#page-jumping-in-github)
+- [Update forked repo](#update-forked-repo)
 
 
 ## LaTex in Github
@@ -63,3 +64,39 @@ The link will be:
 ```
 
 Now we can achieve a Markdown catalogue by this way.
+
+
+## Update forked repo
+First you need to add a remote that points to the upstream repository.
+```
+$ git remote -v
+origin  https://github.com/firmianay/TranslateProject.git (fetch)
+origin  https://github.com/firmianay/TranslateProject.git (push)
+
+$ git remote add LCTT https://github.com/LCTT/TranslateProject.git
+$ git remote -v
+LCTT    https://github.com/LCTT/TranslateProject.git (fetch)
+LCTT    https://github.com/LCTT/TranslateProject.git (push)
+origin  https://github.com/firmianay/TranslateProject.git (fetch)
+origin  https://github.com/firmianay/TranslateProject.git (push)
+```
+Than fetch from the remote repository.
+```
+$ git fetch LCTT
+```
+Now we have the upstream's master branch stored in a local branch.
+```
+$ git branch -va
+* master                ab2f09b43 translating by firmianay
+  remotes/LCTT/master   b3f794dfa PRF&PUB:2017 Cloud Integrated Advanced Orchestrator.md
+  remotes/origin/HEAD   -> origin/master
+  remotes/origin/master ab2f09b43 translating by firmianay
+```
+Merge local branch.
+```
+$ git merge LCTT/master
+```
+Finally we can push to github.
+```
+$ git push
+```

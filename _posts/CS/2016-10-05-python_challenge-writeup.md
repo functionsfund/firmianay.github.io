@@ -15,7 +15,7 @@ print 2 ** 38
 ```
 
 ## 0x01 274877906944
-```pyton
+```py
 import string
 l = string.lowercase
 t = string.maketrans(l, l[2:] + l[:2])
