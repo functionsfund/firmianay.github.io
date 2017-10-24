@@ -10,6 +10,7 @@ description:
 > 这里记录一些二进制方面很零碎的知识
 
 - 调用 `printf@plt` 函数前的 `mov $0x0,%eax`。
+
 一段简单的代码：
 ```
 #include<stdio.h>
