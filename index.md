@@ -9,3 +9,4 @@ Firmy
 - C / Python / ASM 
 - Arch
 - Binary / ctf
+- You think you understand something until you try to teach it.
