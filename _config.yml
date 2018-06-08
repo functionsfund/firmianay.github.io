@@ -11,7 +11,7 @@ author: Firmy
 # Sidebar filter
 # Choose 'tag' or 'category' as filter in sidebar.
 filter: 'category'
-recent_num: 20
+recent_num: 10
 
 # Social account
 twitter: firmianay1
