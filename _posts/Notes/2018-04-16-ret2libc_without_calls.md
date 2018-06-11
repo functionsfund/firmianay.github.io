@@ -1,6 +1,6 @@
 ---
 layout: post
-title: The Geometry of Innocent Flesh on the Bone: Return-into-libc without Function Calls (on the x86)
+title: "The Geometry of Innocent Flesh on the Bone: Return-into-libc without Function Calls (on the x86)"
 category: Notes
 tags: ROP
 keywords: ROP

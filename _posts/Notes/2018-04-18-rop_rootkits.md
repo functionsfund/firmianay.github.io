@@ -1,6 +1,6 @@
 ---
 layout: post
-title: Return-Oriented Rootkits: Bypassing Kernel Code Integrity Protection Mechanisms
+title: "Return-Oriented Rootkits: Bypassing Kernel Code Integrity Protection Mechanisms"
 category: Notes
 tags: ROP
 keywords: ROP, rootkit
