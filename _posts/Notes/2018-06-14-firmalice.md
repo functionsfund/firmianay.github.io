@@ -1,4 +1,11 @@
-# 8.27 Firmalice - Automatic Detection of Authentication Bypass Vulnerabilities in Binary Firmware
+---
+layout: post
+title: "Firmalice - Automatic Detection of Authentication Bypass Vulnerabilities in Binary Firmware"
+category: Notes
+tags: 符号执行
+keywords: 符号执行, Firmalice, angr
+description:
+---
 
 
 ## 简介
